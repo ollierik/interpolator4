@@ -28,6 +28,9 @@ ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ******************************************************************************/
 
+#ifndef INTERPOLATOR_H
+#define INTERPOLATOR_H
+
 #include <math.h>
 
 typedef enum {
@@ -470,3 +473,5 @@ static void interpolator4d_process(interpolator4d* interp, double* dst, int ndst
         interp->dst_index = 0;
     }
 }
+
+#endif /* INTERPOLATOR_H */ 
