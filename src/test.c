@@ -14,16 +14,12 @@ int naive_test(int ndst)
     float* ref_dst = (float*)malloc(sizeof(float) * ndst);
     float* seg_dst = (float*)malloc(sizeof(float) * ndst);
 
-    interpolator4f ref_interp;
-    interpolator4f seg_interp;
+    interpolator4f ref_interp = interpolator4f_create(ndst, 0);
 
     for (i = 0; i < ndst; ++i)
     {
         src[i] = (float)rand() / (float)RAND_MAX;
     }
-
-    interpolator4f_init(&ref_interp, ndst, 0);
-    interpolator4f_init(&seg_interp, ndst, 0);
 
     interpolator4f_process(&ref_interp, ref_dst, ndst, src, nsrc, 1.0);
 
@@ -141,15 +137,94 @@ int segmented_rw_test(int ndst, float rate)
     return 0;
 }
 
+/** Test src against dst with rate of 1.0 */
+int linear_drift_test(int nsrc, float rate)
+{
+    int i, num_errors = 0;
+    int ndst = (int)floor(nsrc / rate);
+    float* src;
+    float* dst = (float*)malloc(sizeof(float) * ndst);
+    
+    nsrc += 2;
+    src = (float*)malloc(sizeof(float) * nsrc);
+    
+
+    interpolator4f interp = interpolator4f_create(ndst, 0);
+
+    for (i = 0; i < ndst; ++i)
+    {
+        src[i] = i+1;
+    }
+
+    interpolator4f_process(&interp, dst, ndst, src, nsrc, rate);
+
+    for (i = 0; i < ndst; ++i)
+    {
+        printf("TEST %i: %.20f\n", i, dst[i]);
+    }
+
+    return 0;
+}
+
+/** Test src against dst with rate of 1.0 */
+int drift_test(int nsrc, float rate)
+{
+    int i, num_errors = 0;
+    int ndst = (int)floor(nsrc / rate);
+    float* src;
+    float* srcseg = (float*)malloc(sizeof(float) * 8);
+    float* lindst = (float*)malloc(sizeof(float) * ndst);
+    float* segdst = (float*)malloc(sizeof(float) * ndst);
+    int isrc = 0;
+    
+    nsrc += 2;
+    src = (float*)malloc(sizeof(float) * nsrc);
+
+    interpolator4f seg_interp = interpolator4f_create(ndst, 0);
+    interpolator4f lin_interp = interpolator4f_create(ndst, 0);
+
+    for (i = 0; i < ndst; ++i)
+    {
+        src[i] = i+1;
+    }
+    
+    /* segmented */
+    do {
+        for (i = 0; i < 8; ++i)
+        {
+            srcseg[i] = src[isrc];
+            isrc++;
+        }
+        interpolator4f_process(&seg_interp, lindst, ndst, srcseg, 8, rate);
+        
+    } while (seg_interp.state != InterpolatorState_Done);
+
+    /* linear */
+    interpolator4f_process(&lin_interp, segdst, ndst, src, nsrc, rate);
+    
+    for (i = 0; i < ndst; ++i)
+    {
+        printf("TEST %i: %.20f %.20f\n", i, lindst[i], segdst[i]);
+    }
+    
+    free(src); free(srcseg); free(lindst); free(segdst);
+
+    return 0;
+}
+
 int main()
 {
+#if 0
     float rate = 0.1;
     
     naive_test(32);
     
-    while (rate < 8)
+    //while (rate < 8)
     {
-        segmented_rw_test(512, 4.0);
+        segmented_rw_test(4096, rate);
         rate += 0.1;
     }
+#endif
+    //linear_drift_test(512, 0.1);
+    drift_test(512, 0.1);
 }
