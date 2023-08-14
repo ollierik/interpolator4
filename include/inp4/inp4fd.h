@@ -28,45 +28,55 @@ ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ******************************************************************************/
 
-#ifndef INTERP4FF_H
-#define INTERP4FF_H
+#ifndef INP4FD_H
+#define INP4FD_H
 
 #include <math.h>
 
+#ifndef INP4_STATE_ENUM
+#define INP4_STATE_ENUM
 typedef enum {
-    Interp4State_Done = 0,
-    Interp4State_Init,
-    Interp4State_SrcDepleted,
-    Interp4State_DstDepleted,
-} Interp4State;
+    Inp4State_Done = 0,
+    Inp4State_Init,
+    Inp4State_SrcDepleted,
+    Inp4State_DstDepleted,
+} Inp4State;
+#endif // INP4_STATE_ENUM
 
-#ifndef INTERP4FF_CTX_SIZE
-#   define INTERP4FF_CTX_SIZE 9
+#ifndef INP4FD_CTX_SIZE
+#   define INP4FD_CTX_SIZE 9
 #endif
 
-#ifdef INTERP4FF_USE_FLOAT32_POS
-typedef float t_interp4ff_pos;
+/* floor and ceil flavours are determined by the position type */
+#ifdef INP4FD_USE_FLOAT32_POS
+    typedef float t_inp4fd_pos;
+#   define INP4FD_FLOOR floorf
+#   define INP4FD_CEIL  ceilf
 #else
-typedef double t_interp4ff_pos;
-#endif // INTERP4FF_USE_FLOAT32_POS
+    typedef double t_inp4fd_pos;
+#   define INP4FD_FLOOR floor
+#   define INP4FD_CEIL  ceil 
+#endif // INP4FD_USE_FLOAT32_POS
 
-typedef float t_interp4ff_src;
-typedef float t_interp4ff_dst;
+typedef float t_inp4fd_src;
+typedef float t_inp4fd_dst;
+
 
 typedef struct {
-    Interp4State state;                             /* both src and dst can't deplete on the same pass.
+    Inp4State state;                             /* both src and dst can't deplete on the same pass.
                                                        src depletion takes priority */
     int num_remaining;                              /* number of samples total to interpolate */
     int dst_index;                                  /* dst output index, gets reset with every dst depletion */
     int context_index;                              /* index of the next free slot */
     int context_position;                           /* position of the first context element */
-    t_interp4ff_pos position;                         /* local position, gets reset with every src depletion */
-    t_interp4ff_src context [INTERP4FF_CTX_SIZE];   /* overlap context memory */
-} interp4ff;
+    t_inp4fd_pos position;                         /* local position, gets reset with every src depletion */
+    t_inp4fd_src context [INP4FD_CTX_SIZE];   /* overlap context memory */
+} inp4fd;
 
-static void interp4ff_init(interp4ff* interp, int num_to_write, t_interp4ff_src initial_state)
+
+static void inp4fd_init(inp4fd* interp, int num_to_write, t_inp4fd_src initial_state)
 {
-    interp->state = Interp4State_Init;
+    interp->state = Inp4State_Init;
     interp->num_remaining = num_to_write;
     interp->dst_index = 0;
     interp->context_index = 1;
@@ -75,31 +85,31 @@ static void interp4ff_init(interp4ff* interp, int num_to_write, t_interp4ff_src 
     interp->context[0] = initial_state;
 }
 
-static interp4ff interp4ff_create(int num_to_write, float initial_state)
+static inp4fd inp4fd_create(int num_to_write, t_inp4fd_pos initial_state)
 {
-    interp4ff interp;
-    interp4ff_init(&interp, num_to_write, initial_state);
+    inp4fd interp;
+    inp4fd_init(&interp, num_to_write, initial_state);
     return interp;
 }
 
 
-static t_interp4ff_dst  interp4ff__cubic_interp     (const float* x, t_interp4ff_pos fract);
-static int              interp4ff__push_to_context  (interp4ff* interp, const t_interp4ff_src* src, int nsrc);
-static int              interp4ff__read_from_context(interp4ff* interp, float* dst, t_interp4ff_pos rate, int n);
-static void             interp4ff__read_from_src    (interp4ff* interp, t_interp4ff_dst* dst, const t_interp4ff_src* src, t_interp4ff_pos rate, int n);
-static void             interp4ff__post_process     (interp4ff* interp, int nsrc);
+static t_inp4fd_dst  inp4fd__cubic_interp       (const t_inp4fd_src* x, t_inp4fd_pos fract);
+static int           inp4fd__push_to_context    (inp4fd* interp, const t_inp4fd_src* src, int nsrc);
+static int           inp4fd__read_from_context  (inp4fd* interp, t_inp4fd_dst* dst, t_inp4fd_pos rate, int n);
+static void          inp4fd__read_from_src      (inp4fd* interp, t_inp4fd_dst* dst, const t_inp4fd_src* src, t_inp4fd_pos rate, int n);
+static void          inp4fd__post_process       (inp4fd* interp, const t_inp4fd_src* src, int nsrc);
 
-static void interp4ff_process(interp4ff* interp, t_interp4_dst* dst, int ndst, const t_interp4_src* src, int nsrc, t_interp4ff_pos rate)
+static void inp4fd_process(inp4fd* interp, t_inp4fd_dst* dst, int ndst, const t_inp4fd_src* src, int nsrc, t_inp4fd_pos rate)
 {
     int n, last_index;
 
     /* If we're not continuing with the same src */
-    if (interp->state != Interp4State_DstDepleted) {
-        interp4ff__push_to_context(interp, src, nsrc);
+    if (interp->state != Inp4State_DstDepleted) {
+        inp4fd__push_to_context(interp, src, nsrc);
     }
     
     /* Clear out old state flags */
-    interp->state = Interp4State_Done;
+    interp->state = Inp4State_Done;
     
     /* n is how many samples we may at most write to dst */
     n = ndst - interp->dst_index;
@@ -107,14 +117,14 @@ static void interp4ff_process(interp4ff* interp, t_interp4_dst* dst, int ndst, c
     if (n < interp->num_remaining) {
 
         /* dst is shorter than the number of requested samples */
-        interp->state = Interp4State_DstDepleted;
+        interp->state = Inp4State_DstDepleted;
     } else {
 
         /* dst is equal or too long, truncate */
         n = interp->num_remaining;
     }
     
-    n = interp4ff__read_from_context(interp, dst, rate, n);
+    n = inp4fd__read_from_context(interp, dst, rate, n);
     
     /* Reading from context may have depleted all available space in dst. */
     if (n > 0) {
@@ -126,27 +136,27 @@ static void interp4ff_process(interp4ff* interp, t_interp4_dst* dst, int ndst, c
         if (last_index > nsrc - 3) {
             
             /* src is going to get depleted with this call */
-            interp->state = Interp4State_SrcDepleted;
+            interp->state = Inp4State_SrcDepleted;
             
             /* Adjust how many samples we're still able to write */
-            n = (int)ceil(((float)(nsrc - 2) - interp->position) / rate);
+            n = (int)INP4FD_CEIL(((t_inp4fd_pos)(nsrc - 2) - interp->position) / rate);
         }
         
         /* do the main interpolation loop */
-        interp4ff__read_from_src(interp, dst, src, rate, n);
+        inp4fd__read_from_src(interp, dst, src, rate, n);
     }
     
-    interp4ff__post_process(interp, nsrc);
+    inp4fd__post_process(interp, src, nsrc);
 }
 
 
-static float interp4ff__cubic_interp(const t_interp4ff_src* x, float fract)
+static t_inp4fd_dst inp4fd__cubic_interp(const t_inp4fd_src* x, t_inp4fd_pos fract)
 {
-    const float x21_diff = x[2] - x[1];
-    const float common_term = (x[3] - x[0] - (float)(3.0) * x21_diff) * fract
-                        + (x[3] + (float)(2.0) * x[0] - (float)(3.0) * x[1]);
+    const t_inp4fd_dst x21_difd = x[2] - x[1];
+    const t_inp4fd_dst c = (x[3] - x[0] - (t_inp4fd_dst)(3.0) * x21_difd) * fract
+                           + (x[3] + (t_inp4fd_dst)(2.0) * x[0] - (t_inp4fd_dst)(3.0) * x[1]);
     
-    const float value = x[1] + fract * (x21_diff - (float)(0.1666667) * ((float)(1.0) - fract) * common_term);
+    const t_inp4fd_dst value = x[1] + fract * (x21_difd - (t_inp4fd_dst)(0.1666667) * ((t_inp4fd_dst)(1.0) - fract) * c);
     
     /*
     printf("%i: [%.20f, %.20f, %.20f, %.20f] (fract: %.20f) -> %.20f\n", interp_counter++, x[0], x[1], x[2], x[3], fract, value);
@@ -155,54 +165,54 @@ static float interp4ff__cubic_interp(const t_interp4ff_src* x, float fract)
     return value;
 }
 
-static int interp4ff__push_to_context(interp4ff* interp, const float* src, int nsrc)
+static int inp4fd__push_to_context(inp4fd* interp, const t_inp4fd_src* src, int nsrc)
 {
     int i, j, m;
 
     /* We're either starting up or continuing with a new block. Copy
-        newly available samples to the end of the context buffer. */
+        newly available samples to the end of the context bufder. */
     m = nsrc < 3 ? nsrc : 3;
     
     for (i = 0; i < m; ++i) {
 
         /* If we're about to overflow, shift tail to the start of
             the context. This is a fairly unlikely case. */
-        if (interp->context_index == INTERP4FF_CTX_SIZE) {
+        if (interp->context_index == INP4FD_CTX_SIZE) {
 
             for (j = 0; j < 5; ++j) {
                 interp->context[j] = interp->context[interp->context_index - 5 + j];
             }
             interp->context_index = 5;
-            interp->context_position += INTERP4FF_CTX_SIZE - 5;
+            interp->context_position += INP4FD_CTX_SIZE - 5;
         }
             
         interp->context[interp->context_index++] = src[i];
     }
 }
     
-static int interp4ff__read_from_context(interp4ff* interp, float* dst, t_interp4ff_pos rate, int n)
+static int inp4fd__read_from_context(inp4fd* interp, t_inp4fd_dst* dst, t_inp4fd_pos rate, int n)
 {
     int num_read = n; /* init to n, substract after loop */
 
     int ipos, index;
-    float fract, pos;
+    t_inp4fd_pos fract, pos;
     const int maxpos = interp->context_position + interp->context_index - 3;
 
     pos = interp->position;
     dst = dst + interp->dst_index; /* dst is incremented as ptr */
 
-    ipos = (int)(floor(interp->position));
+    ipos = (int)(INP4FD_FLOOR(interp->position));
     
     while (ipos <= maxpos && n > 0)
     {
         index = ipos - interp->context_position - 1;
         fract = pos - ipos;
         
-        *dst++ = interp4ff__cubic_interp(&interp->context[index], fract);
+        *dst++ = inp4fd__cubic_interp(&interp->context[index], fract);
         
         pos += rate;
         n--;
-        ipos = (int)(floor(pos));
+        ipos = (int)(INP4FD_FLOOR(pos));
     }
     num_read = num_read - n;
 
@@ -214,14 +224,14 @@ static int interp4ff__read_from_context(interp4ff* interp, float* dst, t_interp4
     return n;
 }
 
-static void interp4ff__read_from_src(interp4ff* interp, float* dst, const float* src, t_interp4ff_pos rate, int n)
+static void inp4fd__read_from_src(inp4fd* interp, t_inp4fd_dst* dst, const t_inp4fd_src* src, t_inp4fd_pos rate, int n)
 {
     int num_read = n; /* init to n, substract after loop*/
-    float pos = interp->position;
+    t_inp4fd_pos pos = interp->position;
 
     /* temps */
     int ipos, index;
-    float fract;
+    t_inp4fd_pos fract;
 
     dst = dst + interp->dst_index;
 
@@ -231,7 +241,7 @@ static void interp4ff__read_from_src(interp4ff* interp, float* dst, const float*
         index = ipos - 1;
         fract = pos - ipos;
         
-        *dst++ = interp4f__cubic_interp(&src[index], fract);
+        *dst++ = inp4fd__cubic_interp(&src[index], fract);
         
         pos += rate;
         n--;
@@ -245,9 +255,9 @@ static void interp4ff__read_from_src(interp4ff* interp, float* dst, const float*
     interp->num_remaining -= num_read;
 }
 
-static void interp4ff__post_process(interp4ff* interp, int nsrc)
+static void inp4fd__post_process(inp4fd* interp, const t_inp4fd_src* src, int nsrc)
 {
-    if (interp->state == Interp4State_SrcDepleted) {
+    if (interp->state == Inp4State_SrcDepleted) {
 
         interp->position -= nsrc;
         
@@ -269,11 +279,11 @@ static void interp4ff__post_process(interp4ff* interp, int nsrc)
             interp->context_position -= nsrc;
         }
     }
-    else if (interp->state == Interp4State_DstDepleted)
+    else if (interp->state == Inp4State_DstDepleted)
     {
         interp->dst_index = 0;
     }
 }
 
 
-#endif /* INTERP4FF_H */ 
+#endif /* INP4FD_H */ 
