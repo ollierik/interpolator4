@@ -1,7 +1,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include "interpolator4.h"
+#include "interp4ff.h"
 
 #define EPSILON_CMP(a, b) (fabs(a - b) > 1e-5)
 
@@ -14,14 +14,14 @@ int naive_test(int ndst)
     float* ref_dst = (float*)malloc(sizeof(float) * ndst);
     float* seg_dst = (float*)malloc(sizeof(float) * ndst);
 
-    interpolator4f ref_interp = interpolator4f_create(ndst, 0);
+    interp4ff ref_interp = interp4ff_create(ndst, 0);
 
     for (i = 0; i < ndst; ++i)
     {
         src[i] = (float)rand() / (float)RAND_MAX;
     }
 
-    interpolator4f_process(&ref_interp, ref_dst, ndst, src, nsrc, 1.0);
+    interp4ff_process(&ref_interp, ref_dst, ndst, src, nsrc, 1.0);
 
     for (i = 0; i < ndst; ++i)
     {
@@ -54,8 +54,8 @@ int segmented_rw_test(int ndst, float rate)
     float* srcseg = NULL;
     float* dstseg = NULL;
 
-    interpolator4f ref_interp = interpolator4f_create(ndst, 0);
-    interpolator4f seg_interp = interpolator4f_create(ndst, 0);
+    interp4ff ref_interp = interp4ff_create(ndst, 0);
+    interp4ff seg_interp = interp4ff_create(ndst, 0);
     
     srand(1);
 
@@ -68,7 +68,7 @@ int segmented_rw_test(int ndst, float rate)
 
     do {
         /* copy from src to segment */
-        if (srcseg == NULL || seg_interp.state == InterpolatorState_SrcDepleted) {
+        if (srcseg == NULL || seg_interp.state == Interp4State_SrcDepleted) {
             
             nsrcseg = rand() % 7 + 1;
             if (nsrcseg + isrc >= nsrc) {
@@ -82,7 +82,7 @@ int segmented_rw_test(int ndst, float rate)
             }
         }
 
-        if (dstseg == NULL || seg_interp.state == InterpolatorState_DstDepleted) {
+        if (dstseg == NULL || seg_interp.state == Interp4State_DstDepleted) {
 
             /* check for output values */
             ndstseg = rand() % 7 + 1;
@@ -95,9 +95,9 @@ int segmented_rw_test(int ndst, float rate)
             dstseg = (float*)malloc(sizeof(float) * ndstseg);
         }
 
-        interpolator4f_process(&seg_interp, dstseg, ndstseg, srcseg, nsrcseg, rate);
+        interp4ff_process(&seg_interp, dstseg, ndstseg, srcseg, nsrcseg, rate);
         
-        if (seg_interp.state == InterpolatorState_DstDepleted)
+        if (seg_interp.state == Interp4State_DstDepleted)
         {
             for (i = 0; i < ndstseg; ++i)
             {
@@ -106,7 +106,7 @@ int segmented_rw_test(int ndst, float rate)
             }
         }
         
-    } while (seg_interp.state != InterpolatorState_Done);
+    } while (seg_interp.state != Interp4State_Done);
     
     for (i = 0; i < ndstseg; ++i)
     {
@@ -115,7 +115,7 @@ int segmented_rw_test(int ndst, float rate)
     }
     
     /* reference dst */
-    interpolator4f_process(&ref_interp, ref_dst, ndst, src, nsrc, rate);
+    interp4ff_process(&ref_interp, ref_dst, ndst, src, nsrc, rate);
     
     for (i = 0; i < ndst; ++i)
     {
@@ -149,14 +149,14 @@ int linear_drift_test(int nsrc, float rate)
     src = (float*)malloc(sizeof(float) * nsrc);
     
 
-    interpolator4f interp = interpolator4f_create(ndst, 0);
+    interp4ff interp = interp4ff_create(ndst, 0);
 
     for (i = 0; i < ndst; ++i)
     {
         src[i] = i+1;
     }
 
-    interpolator4f_process(&interp, dst, ndst, src, nsrc, rate);
+    interp4ff_process(&interp, dst, ndst, src, nsrc, rate);
 
     for (i = 0; i < ndst; ++i)
     {
@@ -180,8 +180,8 @@ int drift_test(int nsrc, float rate)
     nsrc += 2;
     src = (float*)malloc(sizeof(float) * nsrc);
 
-    interpolator4f seg_interp = interpolator4f_create(ndst, 0);
-    interpolator4f lin_interp = interpolator4f_create(ndst, 0);
+    interp4ff seg_interp = interp4ff_create(ndst, 0);
+    interp4ff lin_interp = interp4ff_create(ndst, 0);
 
     for (i = 0; i < ndst; ++i)
     {
@@ -195,12 +195,12 @@ int drift_test(int nsrc, float rate)
             srcseg[i] = src[isrc];
             isrc++;
         }
-        interpolator4f_process(&seg_interp, lindst, ndst, srcseg, 8, rate);
+        interp4ff_process(&seg_interp, lindst, ndst, srcseg, 8, rate);
         
-    } while (seg_interp.state != InterpolatorState_Done);
+    } while (seg_interp.state != Interp4State_Done);
 
     /* linear */
-    interpolator4f_process(&lin_interp, segdst, ndst, src, nsrc, rate);
+    interp4ff_process(&lin_interp, segdst, ndst, src, nsrc, rate);
     
     for (i = 0; i < ndst; ++i)
     {
